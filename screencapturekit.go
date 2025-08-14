@@ -151,33 +151,140 @@ func findBinary() (string, error) {
 		filepath.Join(os.Getenv("HOME"), ".local/bin/screencapturekit"), // User install
 	}
 
+	// First, try to find existing binary
 	for _, path := range locations {
 		if _, err := os.Stat(path); err == nil {
+			// Verify the binary works
+			if err := verifyBinary(path); err != nil {
+				fmt.Printf("Warning: Found binary at %s but it's not functional: %v\n", path, err)
+				continue
+			}
 			return path, nil
 		}
 	}
 
-	// Try to build it if Package.swift exists
-	if _, err := os.Stat("Package.swift"); err == nil {
-		fmt.Println("Building screencapturekit binary...")
-		cmd := exec.Command("swift", "build", "--configuration=release")
-		if err := cmd.Run(); err != nil {
-			return "", fmt.Errorf("failed to build binary: %w", err)
-		}
+	// If no binary found, try to build it
+	return buildBinary()
+}
 
-		// Check if build succeeded
-		builtPath := "./.build/release/screencapturekit"
-		if _, err := os.Stat(builtPath); err == nil {
-			return builtPath, nil
-		}
+// buildBinary attempts to build the Swift CLI binary
+func buildBinary() (string, error) {
+	// Check if we're in the right directory (has Package.swift)
+	if _, err := os.Stat("Package.swift"); err != nil {
+		return "", fmt.Errorf(`screencapturekit Swift binary not found and cannot be built.
 
-		builtPath = "./.build/apple/Products/Release/screencapturekit"
+This Go module requires a Swift CLI component to interface with Apple's ScreenCaptureKit framework.
+
+To resolve this issue:
+
+1. If using this module directly:
+   cd to the module directory and run: swift build --configuration=release
+
+2. If using as a Go module dependency:
+   git clone https://github.com/tfsoares/screencapturekit-go
+   cd screencapturekit-go
+   swift build --configuration=release
+   sudo cp .build/release/screencapturekit /usr/local/bin/
+
+3. Requirements:
+   - macOS 12.3+ (ScreenCaptureKit framework)
+   - Xcode Command Line Tools: xcode-select --install
+   - Swift toolchain (included with Xcode CLT)
+
+4. Verify installation:
+   swift --version
+   screencapturekit list screens
+
+For more help, see: https://github.com/tfsoares/screencapturekit-go#installation`)
+	}
+
+	// Check Swift toolchain
+	if _, err := exec.LookPath("swift"); err != nil {
+		return "", fmt.Errorf(`Swift toolchain not found. 
+
+To install:
+1. Install Xcode Command Line Tools: xcode-select --install
+2. Verify Swift installation: swift --version
+
+Error: %v`, err)
+	}
+
+	// Attempt to build
+	fmt.Println("🔨 ScreenCaptureKit Swift binary not found. Building automatically...")
+	fmt.Println("   This may take a moment on first use...")
+	
+	cmd := exec.Command("swift", "build", "--configuration=release")
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf(`failed to build ScreenCaptureKit Swift binary.
+
+Build error: %v
+
+Troubleshooting:
+1. Ensure you have Xcode Command Line Tools: xcode-select --install
+2. Check Swift version: swift --version (requires Swift 5.9+)
+3. Check macOS version: sw_vers (requires macOS 12.3+)
+4. Try manual build: swift build --configuration=release --verbose
+
+If the problem persists, please report it at:
+https://github.com/tfsoares/screencapturekit-go/issues`, err)
+	}
+
+	// Check if build succeeded
+	buildPaths := []string{
+		"./.build/release/screencapturekit",
+		"./.build/apple/Products/Release/screencapturekit",
+	}
+
+	for _, builtPath := range buildPaths {
 		if _, err := os.Stat(builtPath); err == nil {
+			// Verify the newly built binary
+			if err := verifyBinary(builtPath); err != nil {
+				fmt.Printf("Warning: Built binary at %s is not functional: %v\n", builtPath, err)
+				continue
+			}
+			
+			fmt.Printf("✅ Successfully built ScreenCaptureKit binary: %s\n", builtPath)
 			return builtPath, nil
 		}
 	}
 
-	return "", ErrBinaryNotFound
+	return "", fmt.Errorf(`build completed but binary not found in expected locations.
+
+Expected locations:
+- ./.build/release/screencapturekit
+- ./.build/apple/Products/Release/screencapturekit
+
+Try:
+1. Check build output above for errors
+2. Manual verification: ls -la .build/release/
+3. Rebuild with verbose output: swift build --configuration=release --verbose`)
+}
+
+// verifyBinary checks if the binary is functional
+func verifyBinary(binaryPath string) error {
+	// Check if binary is executable
+	if info, err := os.Stat(binaryPath); err != nil {
+		return fmt.Errorf("binary not accessible: %w", err)
+	} else if info.Mode()&0111 == 0 {
+		return fmt.Errorf("binary not executable")
+	}
+
+	// Test basic functionality (list screens should work without permissions)
+	cmd := exec.Command(binaryPath, "list", "screens")
+	output, err := cmd.CombinedOutput()
+	
+	if err != nil {
+		// If it's a permission error, that's actually OK - the binary works
+		if strings.Contains(string(output), "permission") || strings.Contains(err.Error(), "permission") {
+			return nil // Binary is functional, just needs permissions
+		}
+		return fmt.Errorf("binary test failed: %v, output: %s", err, string(output))
+	}
+
+	return nil
 }
 
 // GetScreens returns all available screens for recording

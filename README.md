@@ -37,9 +37,101 @@ A comprehensive Go wrapper for Apple's ScreenCaptureKit framework, providing hig
 
 ## Installation
 
+### Quick Start
+
+#### Option 1: Automated Installation (Recommended)
 ```bash
-go get github.com/tfsoares/screencapturekit-go
+git clone https://github.com/tfsoares/screencapturekit-go
+cd screencapturekit-go
+./install.sh
 ```
+
+#### Option 2: Manual Installation
+```bash
+# Install the Go module
+go get github.com/tfsoares/screencapturekit-go
+
+# The Swift binary will be built automatically on first use
+# Or build it manually:
+git clone https://github.com/tfsoares/screencapturekit-go
+cd screencapturekit-go
+swift build --configuration=release
+```
+
+#### Option 3: Development Setup
+```bash
+git clone https://github.com/tfsoares/screencapturekit-go
+cd screencapturekit-go
+./setup.sh
+```
+
+### Prerequisites Setup
+
+1. **Install Xcode Command Line Tools**:
+   ```bash
+   xcode-select --install
+   ```
+
+2. **Verify Swift Installation**:
+   ```bash
+   swift --version
+   # Should show: Swift version 5.9+ 
+   ```
+
+3. **Install Audio Routing (for system audio capture)**:
+   ```bash
+   # Install BlackHole (recommended)
+   brew install blackhole-2ch
+   
+   # Configure: System Preferences > Sound > Output > BlackHole 2ch
+   ```
+
+4. **Grant Screen Recording Permissions**:
+   - System Preferences → Security & Privacy → Privacy → Screen Recording
+   - Add your application or Terminal
+   - Restart your application
+
+### Troubleshooting Installation
+
+**Binary Not Found Error**: 
+```
+Failed to get ScreenCaptureKit audio devices: screencapturekit binary not found
+```
+
+**Solutions**:
+
+1. **Automatic Build** (Recommended):
+   The binary builds automatically on first use. If this fails:
+
+2. **Manual Build**:
+   ```bash
+   cd /path/to/screencapturekit-go
+   swift build --configuration=release
+   ```
+
+3. **Global Installation**:
+   ```bash
+   git clone https://github.com/tfsoares/screencapturekit-go
+   cd screencapturekit-go
+   swift build --configuration=release
+   sudo cp .build/release/screencapturekit /usr/local/bin/
+   ```
+
+4. **Verify Installation**:
+   ```bash
+   # Check binary exists
+   which screencapturekit
+   
+   # Test functionality
+   screencapturekit list screens
+   ```
+
+**Common Issues**:
+
+- **"Swift not found"**: Install Xcode Command Line Tools
+- **"No screen capture permission"**: Grant permissions in System Preferences
+- **"No audio devices"**: Install BlackHole or SoundFlower
+- **Build fails**: Check macOS version (requires 12.3+) and Swift version (5.9+)
 
 ## Quick Start
 

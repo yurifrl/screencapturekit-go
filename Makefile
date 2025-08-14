@@ -31,7 +31,7 @@ check-macos-version:
 	@echo "Required version: $(REQUIRED_VERSION) or later"
 
 # Default target
-all: check-deps check-macos-version deps build test
+all: check-deps check-macos-version deps build-swift build test
 
 # Install dependencies
 deps:
@@ -44,10 +44,24 @@ check-deps:
 	@echo "Checking dependencies..."
 	@which xcode-select > /dev/null || (echo "Error: Xcode Command Line Tools not installed. Run: xcode-select --install" && exit 1)
 	@$(GOCMD) version > /dev/null || (echo "Error: Go not installed" && exit 1)
-	@echo "CGO_ENABLED: $$(go env CGO_ENABLED)"
+	@which swift > /dev/null || (echo "Error: Swift not found. Install with: xcode-select --install" && exit 1)
+	@echo "✅ Go version: $$(go version | cut -d' ' -f3-4)"
+	@echo "✅ Swift version: $$(swift --version | head -1)"
+	@echo "✅ CGO_ENABLED: $$(go env CGO_ENABLED)"
 
-# Build the package
-build: check-deps
+# Build Swift CLI binary
+build-swift: check-deps
+	@echo "Building ScreenCaptureKit Swift CLI..."
+	@if [ ! -f ".build/release/screencapturekit" ] && [ ! -f ".build/apple/Products/Release/screencapturekit" ]; then \
+		echo "🔨 Building Swift binary (this may take a moment)..."; \
+		swift build --configuration=release; \
+		echo "✅ Swift binary built successfully"; \
+	else \
+		echo "✅ Swift binary already exists"; \
+	fi
+
+# Build the Go package
+build: check-deps build-swift
 	@echo "Building ScreenCaptureKit Go package..."
 	@mkdir -p $(BUILD_DIR)
 	$(GOBUILD) -v -x -o $(BUILD_DIR)/screencapturekit .
@@ -138,6 +152,49 @@ clean:
 	$(GOCLEAN)
 	rm -rf $(BUILD_DIR)
 
+# Clean Swift build artifacts
+clean-swift:
+	@echo "Cleaning Swift build artifacts..."
+	rm -rf .build
+
+# Full clean (Go + Swift)
+clean-all: clean clean-swift
+	@echo "All build artifacts cleaned"
+
+# Verify Swift binary installation
+verify-binary:
+	@echo "Verifying ScreenCaptureKit binary..."
+	@if [ -f ".build/release/screencapturekit" ]; then \
+		echo "✅ Binary found: .build/release/screencapturekit"; \
+		./.build/release/screencapturekit list screens > /dev/null 2>&1 && echo "✅ Binary functional" || echo "⚠️  Binary needs screen recording permission"; \
+	elif [ -f ".build/apple/Products/Release/screencapturekit" ]; then \
+		echo "✅ Binary found: .build/apple/Products/Release/screencapturekit"; \
+		./.build/apple/Products/Release/screencapturekit list screens > /dev/null 2>&1 && echo "✅ Binary functional" || echo "⚠️  Binary needs screen recording permission"; \
+	elif [ -f "/usr/local/bin/screencapturekit" ]; then \
+		echo "✅ Binary found: /usr/local/bin/screencapturekit"; \
+		screencapturekit list screens > /dev/null 2>&1 && echo "✅ Binary functional" || echo "⚠️  Binary needs screen recording permission"; \
+	else \
+		echo "❌ Binary not found. Run 'make build-swift' to build it"; \
+	fi
+
+# Install Swift binary globally
+install-binary: build-swift
+	@echo "Installing ScreenCaptureKit binary globally..."
+	@if [ -f ".build/release/screencapturekit" ]; then \
+		sudo cp .build/release/screencapturekit /usr/local/bin/; \
+		echo "✅ Binary installed to /usr/local/bin/screencapturekit"; \
+	elif [ -f ".build/apple/Products/Release/screencapturekit" ]; then \
+		sudo cp .build/apple/Products/Release/screencapturekit /usr/local/bin/; \
+		echo "✅ Binary installed to /usr/local/bin/screencapturekit"; \
+	else \
+		echo "❌ Binary not found. Build failed?"; \
+		exit 1; \
+	fi
+
+# Rebuild Swift binary from scratch
+rebuild-swift: clean-swift build-swift
+	@echo "Swift binary rebuilt successfully"
+
 # Check screen recording permissions
 check-permissions:
 	@echo "Checking screen recording permissions..."
@@ -155,10 +212,21 @@ dev-setup: check-deps deps
 # Show help
 help:
 	@echo "Available targets:"
-	@echo "  all              - Build, test, and check everything"
-	@echo "  build            - Build the main package"
-	@echo "  test             - Run tests"
+	@echo ""
+	@echo "Building:"
+	@echo "  all              - Build everything (Swift + Go + examples + test)"
+	@echo "  build-swift      - Build Swift CLI binary"
+	@echo "  build            - Build Go package (includes Swift)"
 	@echo "  examples         - Build all examples"
+	@echo "  rebuild-swift    - Clean and rebuild Swift binary"
+	@echo ""
+	@echo "Binary Management:"
+	@echo "  verify-binary    - Verify Swift binary installation"
+	@echo "  install-binary   - Install Swift binary globally (/usr/local/bin)"
+	@echo "  clean-swift      - Clean Swift build artifacts"
+	@echo "  clean-all        - Clean all build artifacts (Go + Swift)"
+	@echo ""
+	@echo "Examples:"
 	@echo "  run-basic        - Run basic recording example"
 	@echo "  run-audio        - Run audio recording example"
 	@echo "  run-hdr          - Run HDR recording example"
@@ -168,18 +236,24 @@ help:
 	@echo "  run-websocket-stream - Run WebSocket streaming example"
 	@echo "  run-tcp-stream   - Run TCP streaming example"
 	@echo "  run-namedpipe-stream - Run Named Pipe streaming example"
-	@echo "  run-namedpipe-ffmpeg-stream - Run FFmpeg-compatible Named Pipe streaming example"
+	@echo "  run-namedpipe-ffmpeg-stream - Run FFmpeg-compatible streaming example"
+	@echo ""
+	@echo "Development:"
+	@echo "  test             - Run tests"
 	@echo "  format           - Format code"
 	@echo "  lint             - Lint code (requires golangci-lint)"
-	@echo "  install          - Install package locally"
-	@echo "  clean            - Clean build artifacts"
-	@echo "  check-permissions - Check screen recording permissions"
+	@echo "  clean            - Clean Go build artifacts"
 	@echo "  dev-setup        - Set up development environment"
-	@echo "  deps             - Install/update dependencies"
+	@echo ""
+	@echo "System:"
+	@echo "  check-deps       - Check system dependencies"
+	@echo "  check-permissions - Check screen recording permissions"
+	@echo "  install          - Install Go package locally"
+	@echo "  deps             - Install/update Go dependencies"
 	@echo "  help             - Show this help message"
 	@echo ""
 	@echo "Requirements:"
 	@echo "  - macOS $(REQUIRED_VERSION) or later"
 	@echo "  - Go 1.21 or later"
-	@echo "  - Xcode Command Line Tools"
+	@echo "  - Xcode Command Line Tools (for Swift)"
 	@echo "  - Screen Recording permissions"
