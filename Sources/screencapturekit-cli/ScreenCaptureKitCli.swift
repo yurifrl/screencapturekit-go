@@ -27,7 +27,6 @@ struct Options: Decodable {
     let useDirectRecordingAPI: Bool?
 }
 
-@main
 struct ScreenCaptureKitCLI: AsyncParsableCommand {
     static var configuration = CommandConfiguration(
         abstract: "Wrapper around ScreenCaptureKit",

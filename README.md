@@ -1,195 +1,419 @@
-# ScreenCaptureKit Node.js
+# ScreenCaptureKit Go
 
-A Node.js wrapper for Apple's `ScreenCaptureKit` module. This package allows screen recording on macOS with optimal performance using Apple's native APIs.
+A comprehensive Go wrapper for Apple's ScreenCaptureKit framework, providing high-performance screen recording and **real-time audio streaming** capabilities with HDR and microphone support on macOS.
 
-## Features
+## ✨ Features
 
-- High-performance screen recording
-- HDR (High Dynamic Range) support for macOS 13+ (Ventura)
-- System audio capture
-- Microphone audio capture (macOS 15+)
-- Direct-to-file recording (simplified API for macOS 15+)
-- Post-processing capabilities for audio tracks with FFmpeg
-- Cropping support (capture specific screen areas)
-- Multiple options control (FPS, cursor display, click highlighting)
-- Support for various video codecs (H264, HEVC, ProRes)
-- Listing available screens and audio devices
+### 🎬 **Screen Recording**
+- **High-performance screen recording** using Apple's native ScreenCaptureKit framework
+- **HDR recording support** on macOS 13.0+ (Ventura and later)
+- **Multiple video codecs** (H.264, HEVC/H.265, ProRes)
+- **Flexible crop areas** for recording specific screen regions
+- **Multiple screen support** with automatic screen discovery
+- **Hardware-accelerated encoding** when available
+- **Cross-screen recording** support
+
+### 🎵 **Audio Capabilities**
+- **System audio capture** with automatic audio mixing
+- **Microphone recording** on macOS 15.0+ (Sequoia and later)
+- **Audio-only recording** mode with MP3 conversion
+- **Mixed audio streams** (system + microphone)
+
+### 🌊 **Real-time Audio Streaming** (New!)
+- **HTTP Streaming** - Stream via HTTP POST requests
+- **WebSocket Streaming** - Real-time bidirectional streaming
+- **TCP Streaming** - Raw binary audio streaming
+- **Named Pipe Streaming** - Ultra-low latency local IPC streaming
+- **Multi-protocol support** - Stream to multiple destinations
+- **Low-latency processing** - Optimized for real-time applications
 
 ## Requirements
 
-- macOS 10.13 (High Sierra) or newer
-- Node.js 14 or newer
-- FFmpeg (for post-processing audio tracks)
-
-### FFmpeg Installation
-
-FFmpeg is required for post-processing audio tracks. Here's how to install it on different systems:
-
-#### macOS
-Using Homebrew:
-```bash
-brew install ffmpeg
-```
-
-#### Linux (Debian/Ubuntu)
-Using apt package manager:
-```bash
-sudo apt update && sudo apt install ffmpeg
-```
-
-#### Windows
-You have several options:
-
-1. **Using Chocolatey** (recommended if you have Chocolatey installed):
-```bash
-choco install ffmpeg
-```
-
-2. **Using the MSI Installer** (easiest method):
-   - Download the [FFmpeg Installer](https://github.com/icedterminal/ffmpeg-installer/releases) from GitHub
-   - Run the MSI file and follow the installation wizard
-   - FFmpeg will be automatically added to your system PATH
-
-3. **Manual Installation**:
-   - Download FFmpeg from [ffmpeg.org](https://ffmpeg.org/download.html)
-   - Extract the archive
-   - Add FFmpeg to your system PATH manually
-
-To verify the installation on any system, open a terminal/command prompt and run:
-```bash
-ffmpeg -version
-```
+- **macOS 12.3+** (ScreenCaptureKit framework requirement)
+- **Go 1.21+**
+- **Xcode Command Line Tools** (for Swift CLI compilation)
+- **Screen Recording permissions** (System Preferences > Security & Privacy > Screen Recording)
+- **BlackHole or SoundFlower** (for system audio capture)
 
 ## Installation
 
 ```bash
-npm install screencapturekit
+go get github.com/tfsoares/screencapturekit-go
 ```
 
-## Usage
+## Quick Start
 
-### Simple Screen Recording
+### Basic Screen Recording
 
-```javascript
-import createScreenRecorder from 'screencapturekit';
+```go
+package main
 
-const recorder = createScreenRecorder();
+import (
+    "fmt"
+    "log"
+    "time"
+    
+    screencapturekit "github.com/tfsoares/screencapturekit-go"
+)
 
-// Start recording
-await recorder.startRecording();
+func main() {
+    // Create recorder
+    recorder, err := screencapturekit.NewScreenCaptureKit()
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer recorder.Cleanup()
 
-// Wait for desired duration...
-setTimeout(async () => {
-  // Stop recording
-  const videoPath = await recorder.stopRecording();
-  console.log('Video recorded at:', videoPath);
-}, 5000);
-```
+    // Get available screens
+    screens, err := screencapturekit.GetScreens()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-### Recording with Advanced Options
+    // Configure recording
+    options := screencapturekit.RecordingOptions{
+        FPS:        30,
+        ShowCursor: true,
+        ScreenID:   screens[0].ID,
+        VideoCodec: "h264",
+    }
 
-```javascript
-import createScreenRecorder from 'screencapturekit';
+    // Start recording
+    err = recorder.StartRecording(options)
+    if err != nil {
+        log.Fatal(err)
+    }
 
-const recorder = createScreenRecorder();
+    // Record for 10 seconds
+    time.Sleep(10 * time.Second)
 
-// Start recording with options
-await recorder.startRecording({
-  fps: 60,
-  showCursor: true,
-  highlightClicks: true,
-  screenId: 0,
-  videoCodec: 'h264',
-  enableHDR: true, // Enable HDR recording (macOS 13+)
-  microphoneDeviceId: 'device-id', // Enable microphone capture (macOS 15+)
-  recordToFile: true, // Use direct recording API (macOS 15+)
-  cropArea: {
-    x: 0,
-    y: 0,
-    width: 1920,
-    height: 1080
-  }
-});
+    // Stop and save
+    videoPath, err := recorder.StopRecording()
+    if err != nil {
+        log.Fatal(err)
+    }
 
-// Wait...
-
-// Stop recording
-const videoPath = await recorder.stopRecording();
-```
-
-### List Available Screens
-
-```javascript
-import { screens } from 'screencapturekit';
-
-const availableScreens = await screens();
-console.log(availableScreens);
-```
-
-### List Audio Devices
-
-```javascript
-import { audioDevices, microphoneDevices } from 'screencapturekit';
-
-// System audio devices
-const systemAudio = await audioDevices();
-console.log(systemAudio);
-
-// Microphone devices
-const mics = await microphoneDevices();
-console.log(mics);
-```
-
-### Check Support for Features
-
-```javascript
-import { supportsHDRCapture, supportsDirectRecordingAPI, supportsMicrophoneCapture } from 'screencapturekit';
-
-if (supportsHDRCapture) {
-  console.log('Your system supports HDR capture');
-}
-
-if (supportsDirectRecordingAPI) {
-  console.log('Your system supports direct-to-file recording');
-}
-
-if (supportsMicrophoneCapture) {
-  console.log('Your system supports microphone capture');
+    fmt.Printf("Recording saved: %s\n", videoPath)
 }
 ```
 
-## Recording Options
+### Recording with Audio
 
-| Option | Type | Default | Description |
-|--------|------|------------|-------------|
-| fps | number | 30 | Frames per second |
-| cropArea | object | undefined | Cropping area {x, y, width, height} |
-| showCursor | boolean | true | Display cursor in recording |
-| highlightClicks | boolean | false | Highlight mouse clicks |
-| screenId | number | 0 | ID of screen to capture |
-| audioDeviceId | number | undefined | System audio device ID |
-| microphoneDeviceId | string | undefined | Microphone device ID (macOS 15+) |
-| videoCodec | string | 'h264' | Video codec ('h264', 'hevc', 'proRes422', 'proRes4444') |
-| enableHDR | boolean | false | Enable HDR recording (macOS 13+) |
-| recordToFile | boolean | false | Use direct recording API (macOS 15+) |
-| audioOnly | boolean | false | Record audio only, will convert to mp3 after recording |
+```go
+// Get audio devices
+audioDevices, _ := screencapturekit.GetAudioDevices()
+micDevices, _ := screencapturekit.GetMicrophoneDevices()
 
-## Post-processing
+options := screencapturekit.RecordingOptions{
+    FPS:      30,
+    ScreenID: screens[0].ID,
+    AudioDeviceID: &audioDevices[0].ID,        // System audio
+    MicrophoneDeviceID: &micDevices[0].ID,     // Microphone (macOS 15.0+)
+}
+```
 
-When both system audio and microphone are recorded, the library uses FFmpeg to merge these tracks into a single video file. This happens automatically in the `stopRecording()` method. Make sure you have FFmpeg installed on your system.
+### 🌊 Real-time Audio Streaming
 
-## Development
+#### HTTP Streaming
+```go
+streamingURL := "http://localhost:8080/audio-stream"
+
+options := screencapturekit.StreamingOptions{
+    ScreenID:          screens[0].ID,
+    AudioDeviceID:     &audioDevices[0].ID,
+    StreamingEnabled:  true,
+    StreamingProtocol: "http",
+    StreamingURL:      &streamingURL,
+    StreamSystemAudio: true,
+    StreamMicrophone:  true,
+}
+
+recorder.StartStreaming(options)
+// Audio now streaming in real-time!
+```
+
+#### WebSocket Streaming
+```go
+wsURL := "ws://localhost:9090/audio-stream"
+
+options := screencapturekit.StreamingOptions{
+    StreamingEnabled:  true,
+    StreamingProtocol: "websocket",
+    StreamingURL:      &wsURL,
+    StreamSystemAudio: true,
+    StreamMicrophone:  true,
+}
+```
+
+#### TCP Streaming
+```go
+host := "localhost"
+port := 9999
+
+options := screencapturekit.StreamingOptions{
+    StreamingEnabled:  true,
+    StreamingProtocol: "tcp",
+    StreamingHost:     &host,
+    StreamingPort:     &port,
+    StreamSystemAudio: true,
+}
+```
+
+#### Named Pipe Streaming (Ultra-low latency)
+```go
+pipePath := "/tmp/screencapture_audio.fifo"
+
+options := screencapturekit.StreamingOptions{
+    StreamingEnabled:   true,
+    StreamingProtocol:  "pipe",
+    StreamingPipePath:  &pipePath,
+    AudioOnly:          true,
+    StreamSystemAudio:  true,
+    StreamMicrophone:   true,
+}
+
+// Read from pipe in another process
+// cat /tmp/screencapture_audio.fifo | ffplay -f f32le -ar 48000 -ac 2 -
+```
+
+### HDR Recording
+
+```go
+if screencapturekit.SupportsHDR() {
+    options := screencapturekit.RecordingOptions{
+        FPS:        60,
+        ScreenID:   screens[0].ID,
+        VideoCodec: "hevc",  // HEVC recommended for HDR
+        EnableHDR:  true,
+    }
+}
+```
+
+### Audio-Only Recording
+
+```go
+options := screencapturekit.RecordingOptions{
+    FPS:               30,  // Ignored for audio-only
+    ScreenID:          screens[0].ID,
+    AudioDeviceID:     &audioDevices[0].ID,
+    MicrophoneDeviceID: &micDevices[0].ID,
+    AudioOnly:         true,  // Outputs MP3 file
+}
+```
+
+## API Reference
+
+### Core Types
+
+#### `RecordingOptions`
+```go
+type RecordingOptions struct {
+    FPS                   int          // Frames per second (1-60)
+    CropArea              *CropArea    // Optional crop area
+    ShowCursor            bool         // Show cursor in recording
+    HighlightClicks       bool         // Highlight mouse clicks
+    ScreenID              uint32       // Target screen ID
+    AudioDeviceID         *string      // System audio device ID
+    MicrophoneDeviceID    *string      // Microphone device ID
+    VideoCodec            string       // Video codec ("h264", "hevc", "proRes422", "proRes4444")
+    EnableHDR             bool         // Enable HDR recording (macOS 13.0+)
+    UseDirectRecordingAPI bool         // Use direct recording API (macOS 15.0+)
+    AudioOnly             bool         // Audio-only recording
+}
+```
+
+#### `StreamingOptions`
+```go
+type StreamingOptions struct {
+    // Basic screen capture settings
+    FPS                int
+    ScreenID           uint32
+    AudioDeviceID      *string
+    MicrophoneDeviceID *string
+    
+    // Streaming configuration
+    StreamingEnabled   bool
+    StreamingProtocol  string  // "http", "websocket", "tcp", "pipe"
+    StreamingURL       *string // For HTTP/WebSocket
+    StreamingHost      *string // For TCP
+    StreamingPort      *int    // For TCP
+    StreamingPipePath  *string // For Named Pipes
+    
+    // Audio sources
+    AudioOnly          bool    // Audio-only mode
+    StreamSystemAudio  bool    // Capture system/desktop audio
+    StreamMicrophone   bool    // Capture microphone (macOS 15.0+)
+}
+```
+
+### Global Functions
+
+```go
+// Device Discovery
+func GetScreens() ([]Screen, error)
+func GetAudioDevices() ([]AudioDevice, error)
+func GetMicrophoneDevices() ([]AudioDevice, error)
+
+// Feature Detection
+func SupportsHDR() bool
+func SupportsHEVC() bool
+func SupportsMicrophone() bool
+
+// Create Recorder
+func NewScreenCaptureKit() (*ScreenCaptureKit, error)
+```
+
+### Streaming Methods
+
+```go
+// Start real-time audio streaming
+func (sck *ScreenCaptureKit) StartStreaming(options StreamingOptions) error
+
+// Stop streaming
+func (sck *ScreenCaptureKit) StopStreaming() error
+
+// Check streaming status
+func (sck *ScreenCaptureKit) IsStreaming() bool
+
+// Get current streaming options
+func (sck *ScreenCaptureKit) GetStreamingOptions() *StreamingOptions
+```
+
+## Examples
+
+The `cmd/examples/` directory contains complete working examples:
+
+### Recording Examples
+- `basic_recording.go` - Simple screen recording
+- `audio_recording.go` - Recording with system audio & microphone
+- `hdr_recording.go` - HDR recording with HEVC codec
+- `cropped_recording.go` - Recording specific screen areas
+- `audio_only.go` - Audio-only recording with MP3 output
+
+### Streaming Examples (New!)
+- `http_streaming.go` - Real-time HTTP audio streaming
+- `websocket_streaming.go` - WebSocket audio streaming
+- `tcp_streaming.go` - Raw TCP audio streaming
+- `namedpipe_streaming.go` - Ultra-low latency named pipe streaming
+
+## Building and Running
 
 ```bash
-npm install
-npm run build
+# Build everything
+make all
+
+# Build all examples
+make examples
+
+# Run recording examples
+make run-basic
+make run-audio
+make run-hdr
+make run-cropped
+make run-audio-only
+
+# Run streaming examples
+make run-http-stream
+make run-websocket-stream
+make run-tcp-stream
+make run-namedpipe-stream
+
+# Development
+make dev-setup
+make format
+make lint
 ```
 
-## Tests
+## Audio Setup
+
+### System Audio Capture
+For capturing desktop audio, install a virtual audio driver:
 
 ```bash
-npm test
+# Install BlackHole (recommended)
+brew install blackhole-2ch
+
+# Configure in System Preferences:
+# Sound > Output > BlackHole 2ch
 ```
+
+### Test Streaming Servers
+Start test servers to receive audio streams:
+
+```bash
+# HTTP Server
+python3 test-servers/http_audio_server.py
+
+# WebSocket Server (requires: pip3 install websockets)
+python3 test-servers/websocket_audio_server.py
+
+# TCP Server
+python3 test-servers/tcp_audio_server.py
+
+# Named Pipe Reader
+python3 test-servers/namedpipe_reader.py /tmp/screencapture_audio.fifo --analyze
+```
+
+## Performance & Latency
+
+| Protocol | Latency | Use Case |
+|----------|---------|----------|
+| **Named Pipes** | ~1-10ms | Ultra-low latency local processing |
+| **TCP** | ~10-50ms | High-performance network streaming |
+| **WebSocket** | ~20-100ms | Real-time web applications |
+| **HTTP** | ~50-200ms | Simple integration, logging |
+
+## Use Cases
+
+### 🎮 **Live Streaming Applications**
+- Stream desktop audio to Twitch/YouTube
+- Discord bots with computer audio
+- Podcast platforms with real-time distribution
+
+### 🔬 **Audio Analysis & Processing**
+- Real-time audio processing pipelines
+- Machine learning audio classification
+- Audio effects and DSP applications
+
+### 🌐 **Remote Monitoring**
+- System audio monitoring
+- Remote desktop audio component
+- Surveillance and security systems
+
+### ⚡ **Local Audio Processing**
+- Integration with DAWs and audio software
+- High-performance audio streaming within system
+- Debugging audio capture without network complexity
+
+## Permissions
+
+Your application needs Screen Recording permission:
+
+1. **System Preferences > Security & Privacy > Privacy > Screen Recording**
+2. Add your application or terminal
+3. Restart your application
+
+For microphone streaming (macOS 15.0+), also enable:
+- **System Preferences > Security & Privacy > Privacy > Microphone**
+
+## Platform Support
+
+| macOS Version | Basic Recording | HDR | Microphone | Direct API | Streaming |
+|---------------|----------------|-----|------------|------------|-----------|
+| 12.3+ | ✅ | ❌ | ❌ | ❌ | ✅ |
+| 13.0+ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| 14.0+ | ✅ | ✅ | ❌ | ❌ | ✅ |
+| 15.0+ | ✅ | ✅ | ✅ | ✅ | ✅ |
+
+## Documentation
+
+- **[Streaming Guide](STREAMING.md)** - Comprehensive real-time streaming documentation
+- **[Examples](cmd/examples/)** - Complete working examples
+- **[Test Servers](test-servers/)** - Audio streaming test utilities
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## License
 
