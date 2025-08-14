@@ -70,7 +70,8 @@ examples: check-deps
 	$(GOBUILD) -o ../../$(BUILD_DIR)/examples/http_streaming http_streaming.go && \
 	$(GOBUILD) -o ../../$(BUILD_DIR)/examples/websocket_streaming websocket_streaming.go && \
 	$(GOBUILD) -o ../../$(BUILD_DIR)/examples/tcp_streaming tcp_streaming.go && \
-	$(GOBUILD) -o ../../$(BUILD_DIR)/examples/namedpipe_streaming namedpipe_streaming.go
+	$(GOBUILD) -o ../../$(BUILD_DIR)/examples/namedpipe_streaming namedpipe_streaming.go && \
+	$(GOBUILD) -o ../../$(BUILD_DIR)/examples/namedpipe_ffmpeg_streaming namedpipe_ffmpeg_streaming.go
 	@echo "Examples built in $(BUILD_DIR)/examples/"
 
 # Run a specific example
@@ -110,6 +111,10 @@ run-tcp-stream: examples
 run-namedpipe-stream: examples
 	@echo "Running Named Pipe streaming example..."
 	$(BUILD_DIR)/examples/namedpipe_streaming
+
+run-namedpipe-ffmpeg-stream: examples
+	@echo "Running FFmpeg-compatible Named Pipe streaming example..."
+	$(BUILD_DIR)/examples/namedpipe_ffmpeg_streaming
 
 # Format code
 format:
@@ -163,6 +168,7 @@ help:
 	@echo "  run-websocket-stream - Run WebSocket streaming example"
 	@echo "  run-tcp-stream   - Run TCP streaming example"
 	@echo "  run-namedpipe-stream - Run Named Pipe streaming example"
+	@echo "  run-namedpipe-ffmpeg-stream - Run FFmpeg-compatible Named Pipe streaming example"
 	@echo "  format           - Format code"
 	@echo "  lint             - Lint code (requires golangci-lint)"
 	@echo "  install          - Install package locally"

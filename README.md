@@ -176,6 +176,25 @@ options := screencapturekit.StreamingOptions{
 // cat /tmp/screencapture_audio.fifo | ffplay -f f32le -ar 48000 -ac 2 -
 ```
 
+#### FFmpeg-Compatible Named Pipe Streaming
+```go
+pipePath := "/tmp/screencapture_ffmpeg.fifo"
+
+options := screencapturekit.StreamingOptions{
+    StreamingEnabled:   true,
+    StreamingProtocol:  "pipe",
+    StreamingPipePath:  &pipePath,
+    AudioOnly:          true,
+    StreamSystemAudio:  true,
+    StreamMicrophone:   true,
+    FFmpegCompatible:   true, // Raw f32le stream without metadata
+}
+
+// Direct FFmpeg integration
+// ffplay -f f32le -ar 48000 -channels 2 /tmp/screencapture_ffmpeg.fifo
+// ffmpeg -f f32le -ar 48000 -channels 2 -i /tmp/screencapture_ffmpeg.fifo output.mp3
+```
+
 ### HDR Recording
 
 ```go
@@ -239,6 +258,9 @@ type StreamingOptions struct {
     StreamingPort      *int    // For TCP
     StreamingPipePath  *string // For Named Pipes
     
+    // Named pipe options
+    FFmpegCompatible   bool    // Stream raw audio without metadata (FFmpeg compatible)
+    
     // Audio sources
     AudioOnly          bool    // Audio-only mode
     StreamSystemAudio  bool    // Capture system/desktop audio
@@ -295,6 +317,7 @@ The `cmd/examples/` directory contains complete working examples:
 - `websocket_streaming.go` - WebSocket audio streaming
 - `tcp_streaming.go` - Raw TCP audio streaming
 - `namedpipe_streaming.go` - Ultra-low latency named pipe streaming
+- `namedpipe_ffmpeg_streaming.go` - FFmpeg-compatible named pipe streaming
 
 ## Building and Running
 
@@ -317,6 +340,7 @@ make run-http-stream
 make run-websocket-stream
 make run-tcp-stream
 make run-namedpipe-stream
+make run-namedpipe-ffmpeg-stream
 
 # Development
 make dev-setup
@@ -350,8 +374,25 @@ python3 test-servers/websocket_audio_server.py
 # TCP Server
 python3 test-servers/tcp_audio_server.py
 
-# Named Pipe Reader
+# Named Pipe Reader (for metadata-rich format)
 python3 test-servers/namedpipe_reader.py /tmp/screencapture_audio.fifo --analyze
+```
+
+### FFmpeg Integration
+For direct FFmpeg compatibility, use the FFmpeg-compatible mode:
+
+```bash
+# Direct playback (FFmpeg 7.0+ syntax)
+ffplay -f f32le -ar 48000 -channels 2 /tmp/screencapture_ffmpeg.fifo
+
+# Convert to MP3
+ffmpeg -f f32le -ar 48000 -channels 2 -i /tmp/screencapture_ffmpeg.fifo output.mp3
+
+# Stream to network
+ffmpeg -f f32le -ar 48000 -channels 2 -i /tmp/screencapture_ffmpeg.fifo -f mp3 icecast://server:8000/stream
+
+# Real-time processing
+ffmpeg -f f32le -ar 48000 -channels 2 -i /tmp/screencapture_ffmpeg.fifo -af volume=0.5 -f pulse default
 ```
 
 ## Performance & Latency

@@ -97,6 +97,22 @@ options := screencapturekit.StreamingOptions{
 }
 ```
 
+### **5. FFmpeg-Compatible Named Pipe Streaming**
+
+```go
+pipePath := "/tmp/screencapture_ffmpeg.fifo"
+
+options := screencapturekit.StreamingOptions{
+    StreamingEnabled:   true,
+    StreamingProtocol:  "pipe",
+    StreamingPipePath:  &pipePath,
+    AudioOnly:          true,
+    StreamSystemAudio:  true,
+    StreamMicrophone:   true,
+    FFmpegCompatible:   true, // Raw f32le stream
+}
+```
+
 ## 📋 **Setup Instructions**
 
 ### **1. Desktop Audio Capture**
@@ -140,6 +156,7 @@ make run-http-stream
 make run-websocket-stream  
 make run-tcp-stream
 make run-namedpipe-stream
+make run-namedpipe-ffmpeg-stream
 ```
 
 ## 🎛️ **API Reference**
@@ -161,6 +178,7 @@ type StreamingOptions struct {
     StreamingHost      *string // For TCP
     StreamingPort      *int    // For TCP
     StreamingPipePath  *string // For Named Pipes
+    FFmpegCompatible   bool    // Raw f32le stream (no metadata)
     
     // Audio sources
     StreamSystemAudio  bool    // Capture system/desktop audio
@@ -266,11 +284,41 @@ def receive_audio():
 # Read raw audio data
 cat /tmp/screencapture_audio.fifo > audio.raw
 
-# Play directly with ffplay
-ffplay -f f32le -ar 48000 -ac 2 /tmp/screencapture_audio.fifo
+# Play directly with ffplay (FFmpeg 7.0+ syntax)
+ffplay -f f32le -ar 48000 -channels 2 /tmp/screencapture_audio.fifo
 
 # Process with Python
 python3 test-servers/namedpipe_reader.py /tmp/screencapture_audio.fifo --analyze
+```
+
+### **FFmpeg-Compatible Named Pipe Streaming**
+
+**Use Case**: Direct integration with FFmpeg and standard Unix audio tools
+
+**Data Format**:
+```
+[raw_audio_data] (32-bit float PCM, 48kHz, stereo)
+```
+
+**Features**:
+- **100% FFmpeg compatible** - Direct f32le format
+- **No metadata overhead** - Pure audio stream
+- **Standard Unix pipes** - Works with any audio tool
+- **Maximum compatibility** - Industry-standard format
+
+**FFmpeg Integration Examples**:
+```bash
+# Direct playback (FFmpeg 7.0+ syntax)
+ffplay -f f32le -ar 48000 -channels 2 /tmp/pipe.fifo
+
+# Format conversion  
+ffmpeg -f f32le -ar 48000 -channels 2 -i /tmp/pipe.fifo output.wav
+
+# Live streaming
+ffmpeg -f f32le -ar 48000 -channels 2 -i /tmp/pipe.fifo -f mp3 icecast://server:8000/stream
+
+# Real-time processing
+ffmpeg -f f32le -ar 48000 -channels 2 -i /tmp/pipe.fifo -af volume=0.8 -f pulse default
 ```
 
 ## 🎯 **Use Cases**

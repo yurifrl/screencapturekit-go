@@ -485,6 +485,110 @@ class NamedPipeAudioStreamer: AudioStreamer {
     }
 }
 
+// MARK: - Raw Named Pipe Streaming (FFmpeg Compatible)
+
+class RawNamedPipeAudioStreamer: AudioStreamer {
+    private let pipePath: String
+    private var outputStream: OutputStream?
+    private var encoder: AudioEncoder?
+    private(set) var isStreaming = false
+    private let writeQueue = DispatchQueue(label: "RawNamedPipeAudioStreamer.WriteQueue")
+    
+    init(pipePath: String) {
+        self.pipePath = pipePath
+    }
+    
+    func startStreaming() async throws {
+        guard !isStreaming else { return }
+        
+        // Create named pipe if it doesn't exist
+        let fileManager = FileManager.default
+        if !fileManager.fileExists(atPath: pipePath) {
+            // Use mkfifo to create the named pipe
+            let result = mkfifo(pipePath, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP)
+            guard result == 0 else {
+                throw StreamingError.networkError(NSError(domain: "RawNamedPipe", code: Int(errno), userInfo: [NSLocalizedDescriptionKey: "Failed to create named pipe: \(String(cString: strerror(errno)))"]))
+            }
+        }
+        
+        // Open the named pipe for writing
+        guard let outputStream = OutputStream(toFileAtPath: pipePath, append: false) else {
+            throw StreamingError.networkError(NSError(domain: "RawNamedPipe", code: -1, userInfo: [NSLocalizedDescriptionKey: "Failed to create output stream for named pipe"]))
+        }
+        
+        self.outputStream = outputStream
+        outputStream.open()
+        
+        // Wait for the stream to be ready
+        var attempts = 0
+        while outputStream.streamStatus != .open && attempts < 100 {
+            usleep(10000) // 10ms
+            attempts += 1
+        }
+        
+        guard outputStream.streamStatus == .open else {
+            throw StreamingError.networkError(NSError(domain: "RawNamedPipe", code: -2, userInfo: [NSLocalizedDescriptionKey: "Named pipe failed to open after timeout"]))
+        }
+        
+        // Setup audio encoder for raw PCM output (FFmpeg f32le format)
+        var outputFormat = AudioStreamBasicDescription()
+        outputFormat.mSampleRate = 48000
+        outputFormat.mFormatID = kAudioFormatLinearPCM
+        outputFormat.mFormatFlags = kAudioFormatFlagIsFloat | kAudioFormatFlagsNativeEndian | kAudioFormatFlagIsPacked
+        outputFormat.mChannelsPerFrame = 2
+        outputFormat.mBitsPerChannel = 32
+        outputFormat.mBytesPerFrame = 8
+        outputFormat.mBytesPerPacket = 8
+        outputFormat.mFramesPerPacket = 1
+        
+        encoder = try AudioEncoder(outputFormat: outputFormat)
+        isStreaming = true
+        
+        print("📁 Raw named pipe audio streaming started: \(pipePath)")
+        print("🎵 Format: f32le, 48kHz, stereo (FFmpeg compatible)")
+        print("💡 Use: ffplay -f f32le -ar 48000 -channels 2 \(pipePath)")
+    }
+    
+    func stopStreaming() async throws {
+        guard isStreaming else { return }
+        
+        // Close the output stream
+        outputStream?.close()
+        outputStream = nil
+        encoder = nil
+        isStreaming = false
+        
+        print("📁 Raw named pipe audio streaming stopped")
+    }
+    
+    func streamAudioSample(_ sampleBuffer: CMSampleBuffer, from source: AudioSource) async throws {
+        guard isStreaming, let outputStream = outputStream, let encoder = encoder else {
+            throw StreamingError.streamingNotStarted
+        }
+        
+        // Use write queue to prevent blocking the audio thread
+        writeQueue.async {
+            do {
+                let audioData = try encoder.encode(sampleBuffer)
+                
+                // Write raw audio data directly (no metadata headers for FFmpeg compatibility)
+                let bytesWritten = audioData.withUnsafeBytes { bytes in
+                    outputStream.write(bytes.bindMemory(to: UInt8.self).baseAddress!, maxLength: audioData.count)
+                }
+                
+                if bytesWritten < 0 {
+                    print("⚠️ Raw named pipe write error: \(outputStream.streamError?.localizedDescription ?? "unknown")")
+                } else if bytesWritten < audioData.count {
+                    print("⚠️ Raw named pipe partial write: \(bytesWritten)/\(audioData.count) bytes")
+                }
+                
+            } catch {
+                print("⚠️ Raw named pipe encoding error: \(error)")
+            }
+        }
+    }
+}
+
 // MARK: - Multi-target Streaming
 
 class MultiTargetAudioStreamer: AudioStreamer {

@@ -88,12 +88,12 @@ func main() {
 
 	// Create named pipe path
 	tempDir := os.TempDir()
-	pipePath := filepath.Join(tempDir, "screencapture_audio.fifo")
+	pipePath := filepath.Join(tempDir, "screencapture_ffmpeg.fifo")
 	
 	// Clean up any existing pipe
 	os.Remove(pipePath)
 
-	// Configure named pipe streaming options
+	// Configure FFmpeg-compatible named pipe streaming options
 	options := screencapturekit.StreamingOptions{
 		FPS:                30,
 		ShowCursor:         false,
@@ -103,66 +103,80 @@ func main() {
 		MicrophoneDeviceID: micID,
 		VideoCodec:         "h264", // Not used for audio-only
 		
-		// Named Pipe Streaming configuration
+		// FFmpeg-Compatible Named Pipe Streaming configuration
 		StreamingEnabled:   true,
 		StreamingProtocol:  "pipe",
 		StreamingPipePath:  &pipePath,
 		AudioOnly:          true,
 		StreamSystemAudio:  true,
 		StreamMicrophone:   micID != nil,
+		FFmpegCompatible:   true, // Enable FFmpeg compatibility mode
 	}
 
-	fmt.Println("\n📁 Named Pipe Audio Streaming Example")
+	fmt.Println("\n📁 FFmpeg-Compatible Named Pipe Audio Streaming Example")
 	fmt.Printf("📡 Streaming to named pipe: %s\n", pipePath)
-	fmt.Println("📋 What Named Pipes Provide:")
-	fmt.Println("   ✅ Ultra-low latency (local IPC)")
-	fmt.Println("   ✅ High throughput (no network overhead)")
-	fmt.Println("   ✅ OS-level buffering and flow control")
-	fmt.Println("   ✅ Perfect for local audio processing")
-	fmt.Println("   ✅ Compatible with any program that can read files")
+	fmt.Println("🎵 Audio Format: f32le (32-bit float PCM), 48kHz, stereo")
+	fmt.Println("🔧 FFmpeg Compatible: Raw audio stream (no metadata headers)")
 	fmt.Println()
-	fmt.Println("💡 Consumer Examples:")
-	fmt.Println("   # Read raw audio with dd")
-	fmt.Printf("   dd if=%s of=audio.raw bs=4096\n", pipePath)
+	fmt.Println("📋 What FFmpeg Compatibility Provides:")
+	fmt.Println("   ✅ Direct compatibility with FFmpeg tools")
+	fmt.Println("   ✅ Raw f32le audio stream format")
+	fmt.Println("   ✅ No custom headers or metadata")
+	fmt.Println("   ✅ Standard Unix named pipe (FIFO)")
+	fmt.Println("   ✅ Perfect for FFmpeg processing pipelines")
 	fmt.Println()
+	fmt.Println("💡 FFmpeg Usage Examples:")
 	fmt.Println("   # Play directly with ffplay")
 	fmt.Printf("   ffplay -f f32le -ar 48000 -channels 2 %s\n", pipePath)
 	fmt.Println()
-	fmt.Println("   # Process with Python")
-	fmt.Printf("   python3 test-servers/namedpipe_reader.py %s\n", pipePath)
+	fmt.Println("   # Convert to MP3")
+	fmt.Printf("   ffmpeg -f f32le -ar 48000 -channels 2 -i %s output.mp3\n", pipePath)
+	fmt.Println()
+	fmt.Println("   # Stream to network")
+	fmt.Printf("   ffmpeg -f f32le -ar 48000 -channels 2 -i %s -f mp3 icecast://server:8000/stream\n", pipePath)
+	fmt.Println()
+	fmt.Println("   # Real-time analysis with custom tool")
+	fmt.Printf("   your-audio-tool < %s\n", pipePath)
 	fmt.Println()
 
-	fmt.Print("Press Enter to start named pipe streaming...")
+	fmt.Print("Press Enter to start FFmpeg-compatible streaming...")
 	fmt.Scanln()
 
-	fmt.Println("🚀 Starting named pipe audio streaming...")
+	fmt.Println("🚀 Starting FFmpeg-compatible named pipe audio streaming...")
 	err = recorder.StartStreaming(options)
 	if err != nil {
-		log.Fatalf("Failed to start named pipe streaming: %v", err)
+		log.Fatalf("Failed to start FFmpeg-compatible streaming: %v", err)
 	}
 
-	// Stream for 30 seconds
-	fmt.Println("📁 Streaming audio to named pipe for 30 seconds...")
+	// Stream for 60 seconds
+	fmt.Println("📁 Streaming raw audio to named pipe for 60 seconds...")
 	if micID != nil {
 		fmt.Println("🎤 Streaming both system audio AND microphone")
 	} else {
 		fmt.Println("🎵 Streaming system audio only")
 	}
-	fmt.Printf("📡 Data format: 32-bit float PCM, 48kHz, stereo\n")
-	fmt.Printf("📦 Packet format: [source_len][source][timestamp][audio_data]\n")
-	fmt.Printf("💡 Pipe will block until a reader connects\n")
+	fmt.Printf("🎵 Format: f32le, 48kHz, stereo (FFmpeg native format)\n")
+	fmt.Printf("📦 Data: Pure audio stream (no headers)\n")
+	fmt.Printf("💡 Pipe blocks until FFmpeg/reader connects\n")
 	
-	fmt.Println("\n🔄 Open another terminal and try:")
-	fmt.Printf("   cat %s > /dev/null   # Basic read test\n", pipePath)
-	fmt.Printf("   hexdump -C %s | head # Inspect data format\n", pipePath)
+	fmt.Println("\n🔄 Open another terminal and try these commands:")
+	fmt.Printf("   # Basic playback test\n")
+	fmt.Printf("   ffplay -f f32le -ar 48000 -channels 2 %s\n", pipePath)
+	fmt.Println()
+	fmt.Printf("   # Save to WAV file\n")
+	fmt.Printf("   ffmpeg -f f32le -ar 48000 -channels 2 -i %s -t 10 output.wav\n", pipePath)
+	fmt.Println()
+	fmt.Printf("   # Monitor with ffprobe\n")
+	fmt.Printf("   ffprobe -f f32le -ar 48000 -channels 2 %s\n", pipePath)
 	fmt.Println()
 	
-	for i := 30; i > 0; i-- {
+	// Show countdown
+	for i := 60; i > 0; i-- {
 		fmt.Printf("⏱️  Streaming... %d seconds remaining\n", i)
 		time.Sleep(1 * time.Second)
 	}
 
-	fmt.Println("🔌 Stopping named pipe streaming...")
+	fmt.Println("🔌 Stopping FFmpeg-compatible streaming...")
 	err = recorder.StopStreaming()
 	if err != nil {
 		log.Fatalf("Failed to stop streaming: %v", err)
@@ -171,19 +185,26 @@ func main() {
 	// Clean up the named pipe
 	os.Remove(pipePath)
 
-	fmt.Println("✅ Named pipe audio streaming example completed!")
+	fmt.Println("✅ FFmpeg-compatible streaming example completed!")
 	fmt.Println()
 	fmt.Println("📊 What happened:")
 	fmt.Println("   • Real-time audio captured from system/microphone")
-	fmt.Println("   • Audio encoded as 32-bit float PCM (native format)")
-	fmt.Println("   • Data written to named pipe with metadata headers")
-	fmt.Println("   • OS handled buffering and synchronization")
-	fmt.Println("   • Zero network overhead for maximum performance")
+	fmt.Println("   • Audio streamed as raw f32le PCM (32-bit float)")
+	fmt.Println("   • Direct compatibility with FFmpeg tools")
+	fmt.Println("   • No custom headers or metadata overhead")
+	fmt.Println("   • Standard Unix named pipe for maximum compatibility")
 	fmt.Println()
-	fmt.Println("🎯 Perfect Use Cases:")
-	fmt.Println("   • Local audio processing pipelines")
-	fmt.Println("   • Real-time audio analysis (ML/DSP)")
-	fmt.Println("   • Integration with audio software (DAWs, etc.)")
-	fmt.Println("   • High-performance audio streaming within the system")
-	fmt.Println("   • Debugging audio capture without network complexity")
+	fmt.Println("🎯 Perfect for:")
+	fmt.Println("   • FFmpeg processing pipelines")
+	fmt.Println("   • Audio format conversion workflows")
+	fmt.Println("   • Live streaming to network services")
+	fmt.Println("   • Custom audio analysis tools")
+	fmt.Println("   • Integration with existing Unix audio tools")
+	fmt.Println()
+	fmt.Println("🔧 Technical Details:")
+	fmt.Println("   • Format: IEEE 754 32-bit float, little-endian")
+	fmt.Println("   • Sample Rate: 48000 Hz")
+	fmt.Println("   • Channels: 2 (stereo)")
+	fmt.Println("   • Interleaved: Left, Right, Left, Right...")
+	fmt.Println("   • No headers, pure audio stream")
 }

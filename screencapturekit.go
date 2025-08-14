@@ -86,6 +86,7 @@ type StreamingOptions struct {
 	AudioOnly           bool    `json:"audioOnly,omitempty"`
 	StreamSystemAudio   bool    `json:"streamSystemAudio"`
 	StreamMicrophone    bool    `json:"streamMicrophone"`
+	FFmpegCompatible    bool    `json:"ffmpegCompatible,omitempty"` // Stream raw audio without metadata headers
 }
 
 // recordingOptionsInternal represents options passed to the Swift CLI

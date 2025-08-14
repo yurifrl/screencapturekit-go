@@ -34,6 +34,7 @@ struct StreamingOptions: Decodable {
     let audioOnly: Bool?
     let streamSystemAudio: Bool?
     let streamMicrophone: Bool?
+    let ffmpegCompatible: Bool?
 }
 
 struct StreamingScreenCaptureKitCLI: AsyncParsableCommand {
@@ -230,7 +231,13 @@ class AudioStreamingRecorder {
             guard let pipePath = options.streamingPipePath else {
                 throw StreamingError.invalidConfiguration
             }
-            audioStreamer = NamedPipeAudioStreamer(pipePath: pipePath)
+            
+            // Choose streamer based on FFmpeg compatibility flag
+            if options.ffmpegCompatible == true {
+                audioStreamer = RawNamedPipeAudioStreamer(pipePath: pipePath)
+            } else {
+                audioStreamer = NamedPipeAudioStreamer(pipePath: pipePath)
+            }
             
         default:
             throw StreamingError.invalidConfiguration
