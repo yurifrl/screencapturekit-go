@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -512,7 +513,7 @@ func (sck *ScreenCaptureKit) StopRecording() (string, error) {
 			// If interrupt fails, try kill
 			sck.cmd.Process.Kill()
 		}
-		
+
 		// Wait for process to finish
 		sck.cmd.Wait()
 		sck.cmd = nil
@@ -521,6 +522,9 @@ func (sck *ScreenCaptureKit) StopRecording() (string, error) {
 	sck.isRecording = false
 	videoPath := sck.videoPath
 	sck.videoPath = ""
+
+	// Give AVAssetWriter time to finish writing and close the file
+	time.Sleep(500 * time.Millisecond)
 
 	// Check if file was created and has content
 	if stat, err := os.Stat(videoPath); err != nil || stat.Size() == 0 {

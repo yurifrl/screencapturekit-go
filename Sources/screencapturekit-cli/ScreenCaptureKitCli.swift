@@ -1,12 +1,10 @@
 //
-//  File.swift
+//  ScreenCaptureKitCli.swift
 //
 //
 //  Created by Mukesh Soni on 18/07/23.
 //
 
-// import AppKit
-import ArgumentParser
 import AVFoundation
 import Foundation
 
@@ -27,139 +25,180 @@ struct Options: Decodable {
     let useDirectRecordingAPI: Bool?
 }
 
-struct ScreenCaptureKitCLI: AsyncParsableCommand {
-    static var configuration = CommandConfiguration(
-        abstract: "Wrapper around ScreenCaptureKit",
-        subcommands: [List.self, Record.self],
-        defaultSubcommand: Record.self
-    )
-}
+struct ScreenCaptureKitCLI {
+    static func main() async {
+        let args = Array(CommandLine.arguments.dropFirst())
 
-extension ScreenCaptureKitCLI {
-    struct List: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(
-            abstract: "List windows or screens which can be recorded",
-            subcommands: [Screens.self, AudioDevices.self, MicrophoneDevices.self]
+        guard !args.isEmpty else {
+            printUsage()
+            exit(1)
+        }
+
+        let command = args[0]
+
+        do {
+            switch command {
+            case "list":
+                try await handleListCommand(args: Array(args.dropFirst()))
+            case "record":
+                try await handleRecordCommand(args: Array(args.dropFirst()))
+            default:
+                print("Unknown command: \(command)", to: .standardError)
+                printUsage()
+                exit(1)
+            }
+        } catch {
+            print("Error: \(error)", to: .standardError)
+            exit(1)
+        }
+    }
+
+    static func printUsage() {
+        print("""
+        ScreenCaptureKit CLI
+
+        USAGE:
+            screencapturekit <command> [options]
+
+        COMMANDS:
+            list screens              List available screens
+            list audio-devices        List audio devices
+            list microphone-devices   List microphone devices
+            record <json>             Start recording with JSON options
+
+        EXAMPLES:
+            screencapturekit list screens
+            screencapturekit record '{"destination":"file:///tmp/test.mov","screenId":2,"framesPerSecond":30,"showCursor":true,"highlightClicks":false}'
+        """, to: .standardError)
+    }
+
+    static func handleListCommand(args: [String]) async throws {
+        guard !args.isEmpty else {
+            print("Missing list subcommand. Use: screens, audio-devices, or microphone-devices", to: .standardError)
+            exit(1)
+        }
+
+        let subcommand = args[0]
+
+        switch subcommand {
+        case "screens":
+            try await listScreens()
+        case "audio-devices":
+            try await listAudioDevices()
+        case "microphone-devices":
+            try await listMicrophoneDevices()
+        default:
+            print("Unknown list subcommand: \(subcommand)", to: .standardError)
+            print("Available: screens, audio-devices, microphone-devices", to: .standardError)
+            exit(1)
+        }
+    }
+
+    static func handleRecordCommand(args: [String]) async throws {
+        guard !args.isEmpty else {
+            print("Missing JSON options for record command", to: .standardError)
+            exit(1)
+        }
+
+        let optionsJson = args[0]
+        let options: Options = try optionsJson.jsonDecoded()
+
+        var keepRunning = true
+
+        print(options)
+        // Create a screen recording
+        // Check for screen recording permission, make sure your terminal has screen recording permission
+        guard CGPreflightScreenCaptureAccess() else {
+            throw RecordingError("No screen capture permission")
+        }
+
+        let screenRecorder = try await ScreenRecorder(
+            url: options.destination,
+            displayID: options.screenId,
+            showCursor: options.showCursor,
+            cropRect: options.cropRect,
+            audioDeviceId: options.audioDeviceId,
+            microphoneDeviceId: options.microphoneDeviceId,
+            enableHDR: options.enableHDR ?? false,
+            useDirectRecordingAPI: options.useDirectRecordingAPI ?? false
         )
-    }
 
-    struct Record: AsyncParsableCommand {
-        static let configuration = CommandConfiguration(abstract: "Start a recording with the given options.")
+        print("Starting screen recording of display \(options.screenId)")
+        try await screenRecorder.start()
 
-        @Argument(help: "Stringified JSON object with options passed to ScreenCaptureKitCLI")
-        var options: String
+        // Super duper hacky way to keep waiting for user's kill signal.
+        // I have no idea if i am doing it right
+        signal(SIGKILL, SIG_IGN)
+        signal(SIGINT, SIG_IGN)
+        signal(SIGTERM, SIG_IGN)
+        let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
+        sigintSrc.setEventHandler {
+            print("Got SIGINT")
+            keepRunning = false
+        }
+        sigintSrc.resume()
+        let sigKillSrc = DispatchSource.makeSignalSource(signal: SIGKILL, queue: .main)
+        sigKillSrc.setEventHandler {
+            print("Got SIGKILL")
+            keepRunning = false
+        }
+        sigKillSrc.resume()
+        let sigTermSrc = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
+        sigTermSrc.setEventHandler {
+            print("Got SIGTERM")
+            keepRunning = false
+        }
+        sigTermSrc.resume()
 
-        mutating func run() async throws {
-            var keepRunning = true
-            let options: Options = try options.jsonDecoded()
-
-            print(options)
-            // Create a screen recording
-            do {
-                // Check for screen recording permission, make sure your terminal has screen recording permission
-                guard CGPreflightScreenCaptureAccess() else {
-                    throw RecordingError("No screen capture permission")
-                }
-
-                let screenRecorder = try await ScreenRecorder(
-                    url: options.destination, 
-                    displayID: options.screenId, 
-                    showCursor: options.showCursor, 
-                    cropRect: options.cropRect,
-                    audioDeviceId: options.audioDeviceId,
-                    microphoneDeviceId: options.microphoneDeviceId,
-                    enableHDR: options.enableHDR ?? false,
-                    useDirectRecordingAPI: options.useDirectRecordingAPI ?? false
-                )
-                
-                print("Starting screen recording of display \(options.screenId)")
-                try await screenRecorder.start()
-
-                // Super duper hacky way to keep waiting for user's kill signal.
-                // I have no idea if i am doing it right
-                signal(SIGKILL, SIG_IGN)
-                signal(SIGINT, SIG_IGN)
-                signal(SIGTERM, SIG_IGN)
-                let sigintSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-                sigintSrc.setEventHandler {
-                    print("Got SIGINT")
-                    keepRunning = false
-                }
-                sigintSrc.resume()
-                let sigKillSrc = DispatchSource.makeSignalSource(signal: SIGKILL, queue: .main)
-                sigKillSrc.setEventHandler {
-                    print("Got SIGKILL")
-                    keepRunning = false
-                }
-                sigKillSrc.resume()
-                let sigTermSrc = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
-                sigTermSrc.setEventHandler {
-                    print("Got SIGTERM")
-                    keepRunning = false
-                }
-                sigTermSrc.resume()
-
-                // If i run the NSApplication run loop, then the mouse events are received
-                // But i couldn't figure out a way to kill this run loop
-                // Also, We have to import AppKit to run NSApplication run loop
-                // await NSApplication.shared.run()
-                // Keep looping and checking every 1 second if the user pressed the kill switch
-                while true {
-                    if !keepRunning {
-                        try await screenRecorder.stop()
-                        print("We are done. Have saved the recording to a file.")
-                        break
-                    } else {
-                        sleep(1)
-                    }
-                }
-            } catch {
-                print("Error during recording:", error)
+        // If i run the NSApplication run loop, then the mouse events are received
+        // But i couldn't figure out a way to kill this run loop
+        // Also, We have to import AppKit to run NSApplication run loop
+        // await NSApplication.shared.run()
+        // Keep looping and checking every 1 second if the user pressed the kill switch
+        while true {
+            if !keepRunning {
+                try await screenRecorder.stop()
+                print("We are done. Have saved the recording to a file.")
+                break
+            } else {
+                sleep(1)
             }
         }
     }
-}
 
-extension ScreenCaptureKitCLI.List {
-    struct Screens: AsyncParsableCommand {
-        mutating func run() async throws {
-            let sharableContent = try await SCShareableContent.current
-            print(sharableContent.displays.count, sharableContent.windows.count, sharableContent.applications.count)
-            let screens = sharableContent.displays.map { display in
-                ["id": display.displayID, "width": display.width, "height": display.height]
-            }
-            try print(toJson(screens), to: .standardError)
+    static func listScreens() async throws {
+        let sharableContent = try await SCShareableContent.current
+        print(sharableContent.displays.count, sharableContent.windows.count, sharableContent.applications.count)
+        let screens = sharableContent.displays.map { display in
+            ["id": display.displayID, "width": display.width, "height": display.height]
         }
+        try print(toJson(screens), to: .standardError)
     }
-    
-    struct AudioDevices: AsyncParsableCommand {
-        mutating func run() async throws {
-            let discoverySession = AVCaptureDevice.DiscoverySession(
-                deviceTypes: [.builtInMicrophone, .externalUnknown],
-                mediaType: .audio,
-                position: .unspecified
-            )
-            let devices = discoverySession.devices
-            let audioDevices = devices.map { device in
-                ["id": device.uniqueID, "name": device.localizedName, "manufacturer": device.manufacturer]
-            }
-            try print(toJson(audioDevices), to: .standardError)
+
+    static func listAudioDevices() async throws {
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInMicrophone, .externalUnknown],
+            mediaType: .audio,
+            position: .unspecified
+        )
+        let devices = discoverySession.devices
+        let audioDevices = devices.map { device in
+            ["id": device.uniqueID, "name": device.localizedName, "manufacturer": device.manufacturer]
         }
+        try print(toJson(audioDevices), to: .standardError)
     }
-    
-    struct MicrophoneDevices: AsyncParsableCommand {
-        mutating func run() async throws {
-            let discoverySession = AVCaptureDevice.DiscoverySession(
-                deviceTypes: [.builtInMicrophone, .externalUnknown],
-                mediaType: .audio,
-                position: .unspecified
-            )
-            let devices = discoverySession.devices.filter { $0.hasMediaType(.audio) }
-            let microphones = devices.map { device in
-                ["id": device.uniqueID, "name": device.localizedName, "manufacturer": device.manufacturer]
-            }
-            try print(toJson(microphones), to: .standardError)
+
+    static func listMicrophoneDevices() async throws {
+        let discoverySession = AVCaptureDevice.DiscoverySession(
+            deviceTypes: [.builtInMicrophone, .externalUnknown],
+            mediaType: .audio,
+            position: .unspecified
+        )
+        let devices = discoverySession.devices.filter { $0.hasMediaType(.audio) }
+        let microphones = devices.map { device in
+            ["id": device.uniqueID, "name": device.localizedName, "manufacturer": device.manufacturer]
         }
+        try print(toJson(microphones), to: .standardError)
     }
 }
 
@@ -175,15 +214,15 @@ struct ScreenRecorder {
     private var microphoneInput: AVAssetWriterInput?
     private let streamOutput: StreamOutput
     private var stream: SCStream
-    
+
     private var _recordingOutput: Any?
-    
+
     private var useDirectRecording: Bool
 
     init(
-        url: URL, 
-        displayID: CGDirectDisplayID, 
-        showCursor: Bool = true, 
+        url: URL,
+        displayID: CGDirectDisplayID,
+        showCursor: Bool = true,
         cropRect: CGRect? = nil,
         audioDeviceId: String? = nil,
         microphoneDeviceId: String? = nil,
@@ -191,7 +230,7 @@ struct ScreenRecorder {
         useDirectRecordingAPI: Bool = false
     ) async throws {
         self.useDirectRecording = useDirectRecordingAPI
-        
+
         // Create AVAssetWriter for a QuickTime movie file
         assetWriter = try AVAssetWriter(url: url, fileType: .mov)
 
@@ -222,7 +261,7 @@ struct ScreenRecorder {
         }
         outputSettings[AVVideoWidthKey] = videoSize.width
         outputSettings[AVVideoHeightKey] = videoSize.height
-        
+
         // Configure HDR settings if enabled
         if enableHDR {
             if #available(macOS 13.0, *) {
@@ -239,7 +278,7 @@ struct ScreenRecorder {
         // Create AVAssetWriter input for video
         videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: outputSettings)
         videoInput.expectsMediaDataInRealTime = true
-        
+
         // Configure audio input if an audio device is specified
         if audioDeviceId != nil {
             let audioSettings: [String: Any] = [
@@ -248,15 +287,15 @@ struct ScreenRecorder {
                 AVNumberOfChannelsKey: 2,
                 AVEncoderBitRateKey: 256000
             ]
-            
+
             audioInput = AVAssetWriterInput(mediaType: .audio, outputSettings: audioSettings)
             audioInput?.expectsMediaDataInRealTime = true
-            
+
             if let audioInput = audioInput, assetWriter.canAdd(audioInput) {
                 assetWriter.add(audioInput)
             }
         }
-        
+
         // Configure microphone input if a microphone device is specified
         if microphoneDeviceId != nil {
             let micSettings: [String: Any] = [
@@ -265,15 +304,15 @@ struct ScreenRecorder {
                 AVNumberOfChannelsKey: 1,
                 AVEncoderBitRateKey: 128000
             ]
-            
+
             microphoneInput = AVAssetWriterInput(mediaType: .audio, outputSettings: micSettings)
             microphoneInput?.expectsMediaDataInRealTime = true
-            
+
             if let microphoneInput = microphoneInput, assetWriter.canAdd(microphoneInput) {
                 assetWriter.add(microphoneInput)
             }
         }
-        
+
         streamOutput = StreamOutput(
             videoInput: videoInput,
             audioInput: audioInput,
@@ -298,17 +337,17 @@ struct ScreenRecorder {
         // Obtenir le contenu partageable
         let sharableContent = try await SCShareableContent.current
         print("Displays: \(sharableContent.displays.count), Windows: \(sharableContent.windows.count), Apps: \(sharableContent.applications.count)")
-        
+
         // Trouver l'écran demandé
         guard let display = sharableContent.displays.first(where: { $0.displayID == displayID }) else {
             throw RecordingError("No display with ID \(displayID) found")
         }
-        
+
         let filter = SCContentFilter(display: display, excludingWindows: [])
-        
+
         // Configurer le stream
         var config: SCStreamConfiguration
-        
+
         if enableHDR, #available(macOS 13.0, *) {
             // Pour macOS 15+, utiliser le preset HDR
             if #available(macOS 15.0, *) {
@@ -324,18 +363,18 @@ struct ScreenRecorder {
         } else {
             config = SCStreamConfiguration()
         }
-        
+
         // Configurer la fréquence d'images
         config.minimumFrameInterval = CMTime(value: 1, timescale: Int32(truncating: NSNumber(value: showCursor ? 60 : 30)))
         config.showsCursor = showCursor
-        
+
         // Configurer la capture du son système si nécessaire
         if let _ = audioDeviceId {
             config.capturesAudio = true
             config.excludesCurrentProcessAudio = true
             print("System audio capture enabled")
         }
-        
+
         // Configurer la capture de microphone si nécessaire
         if let microphoneDeviceId = microphoneDeviceId {
             if #available(macOS 15.0, *) {
@@ -345,20 +384,20 @@ struct ScreenRecorder {
                 print("Microphone capture with direct API requires macOS 15.0+")
             }
         }
-        
+
         // Créer le stream
         stream = SCStream(filter: filter, configuration: config, delegate: nil)
-        
+
         // Utiliser l'API d'enregistrement direct si spécifié
         if useDirectRecordingAPI {
             if #available(macOS 15.0, *) {
                 let recordingConfig = SCRecordingOutputConfiguration()
                 recordingConfig.outputURL = url
-                
+
                 let recordingDelegate = RecordingDelegate()
                 let recOutput = SCRecordingOutput(configuration: recordingConfig, delegate: recordingDelegate)
                 _recordingOutput = recOutput
-                
+
                 do {
                     try stream.addRecordingOutput(recOutput)
                 } catch {
@@ -369,15 +408,15 @@ struct ScreenRecorder {
                 self.useDirectRecording = false
             }
         }
-        
+
         // Configuration de sortie de stream pour l'enregistrement manuel
         if !useDirectRecordingAPI || !self.useDirectRecording {
             try stream.addStreamOutput(streamOutput, type: .screen, sampleHandlerQueue: videoSampleBufferQueue)
-            
+
             if audioDeviceId != nil {
                 try stream.addStreamOutput(streamOutput, type: .audio, sampleHandlerQueue: audioSampleBufferQueue)
             }
-            
+
             if microphoneDeviceId != nil {
                 if #available(macOS 15.0, *) {
                     try stream.addStreamOutput(streamOutput, type: .microphone, sampleHandlerQueue: microphoneSampleBufferQueue)
@@ -419,7 +458,7 @@ struct ScreenRecorder {
         videoInput.markAsFinished()
         audioInput?.markAsFinished()
         microphoneInput?.markAsFinished()
-        
+
         await assetWriter.finishWriting()
     }
 
@@ -427,13 +466,13 @@ struct ScreenRecorder {
         let videoInput: AVAssetWriterInput
         let audioInput: AVAssetWriterInput?
         let microphoneInput: AVAssetWriterInput?
-        
+
         var sessionStarted = false
         var firstSampleTime: CMTime = .zero
         var lastSampleBuffer: CMSampleBuffer?
 
-        init(videoInput: AVAssetWriterInput, 
-             audioInput: AVAssetWriterInput? = nil, 
+        init(videoInput: AVAssetWriterInput,
+             audioInput: AVAssetWriterInput? = nil,
              microphoneInput: AVAssetWriterInput? = nil) {
             self.videoInput = videoInput
             self.audioInput = audioInput
@@ -458,13 +497,13 @@ struct ScreenRecorder {
                 break
             }
         }
-        
+
         private func handleVideoSampleBuffer(_ sampleBuffer: CMSampleBuffer) {
             guard videoInput.isReadyForMoreMediaData else {
                 print("AVAssetWriterInput (video) isn't ready, dropping frame")
                 return
             }
-            
+
             // Retrieve the array of metadata attachments from the sample buffer
             guard let attachmentsArray = CMSampleBufferGetSampleAttachmentsArray(sampleBuffer, createIfNecessary: false) as? [[SCStreamFrameInfo: Any]],
                   let attachments = attachmentsArray.first
@@ -475,7 +514,7 @@ struct ScreenRecorder {
                   let status = SCFrameStatus(rawValue: statusRawValue),
                   status == .complete
             else { return }
-            
+
             // Save the timestamp of the current sample, all future samples will be offset by this
             if firstSampleTime == .zero {
                 firstSampleTime = sampleBuffer.presentationTimeStamp
@@ -500,23 +539,23 @@ struct ScreenRecorder {
                 print("Couldn't copy CMSampleBuffer, dropping frame")
             }
         }
-        
+
         private func handleAudioSampleBuffer(_ sampleBuffer: CMSampleBuffer, isFromMicrophone: Bool) {
             let input = isFromMicrophone ? microphoneInput : audioInput
-            
+
             guard let audioInput = input, audioInput.isReadyForMoreMediaData else {
                 if input != nil {
                     print("AVAssetWriterInput (audio) isn't ready, dropping sample")
                 }
                 return
             }
-            
+
             // Offset audio sample relative to video start time
             if firstSampleTime == .zero {
                 // If first video sample hasn't arrived yet, cache this audio sample for later
                 return
             }
-            
+
             // Retime audio sample buffer to match video timeline
             let presentationTime = sampleBuffer.presentationTimeStamp - firstSampleTime
             let timing = CMSampleTimingInfo(
@@ -524,7 +563,7 @@ struct ScreenRecorder {
                 presentationTimeStamp: presentationTime,
                 decodeTimeStamp: .invalid
             )
-            
+
             if let retimedSampleBuffer = try? CMSampleBuffer(copying: sampleBuffer, withNewTiming: [timing]) {
                 audioInput.append(retimedSampleBuffer)
             } else {
@@ -562,7 +601,7 @@ class RecordingDelegate: NSObject, SCRecordingOutputDelegate {
             print("Recording started successfully")
         }
     }
-    
+
     func recordingOutput(_ output: SCRecordingOutput, didFinishRecordingWithError error: Error?) {
         if let error = error {
             print("Recording finished with error: \(error)")
